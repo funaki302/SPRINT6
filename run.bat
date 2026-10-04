@@ -23,7 +23,7 @@ javac -d "%BIN_DIR%" -cp "%SERVLET_JAR%;%GSON_JAR%" ^
 jar -cvf framework.jar -C "%BIN_DIR%" .
 
 rem Compilation Application Test
-javac -d test\WEB-INF\classes -cp "framework.jar;%SERVLET_JAR%;%GSON_JAR%" test\src\itu\webdynamique\app\controller\*.java
+javac -parameters -d test\WEB-INF\classes -cp "framework.jar;%SERVLET_JAR%;%GSON_JAR%" test\src\itu\webdynamique\app\controller\*.java
 
 rem Deploiement Tomcat
 mkdir "%TARGET_DIR%\WEB-INF\lib"
