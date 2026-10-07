@@ -3,6 +3,8 @@ package itu.webdynamique.framework;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.lang.reflect.Method;
+import java.lang.reflect.Parameter;
+import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -81,12 +83,13 @@ public class FrontServlet extends HttpServlet {
             try {
                 Class<?> laClasse  = Class.forName(mapping.getClassName());
                 Object   instance  = laClasse.getDeclaredConstructor().newInstance();
-                Method   laMethode = laClasse.getDeclaredMethod(mapping.getMethodName());
+                Method   laMethode = findMappedMethod(laClasse, mapping.getMethodName());
 
                 // Vérifier si la méthode a l'annotation @RestAPI
                 boolean isRestAPI = laMethode.isAnnotationPresent(RestAPI.class);
 
-                Object resultat = laMethode.invoke(instance);
+                Object[] arguments = resolveArguments(laMethode, request);
+                Object resultat = laMethode.invoke(instance, arguments);
 
                 if (isRestAPI) {
                     // Mode API REST - retourner du JSON
@@ -120,6 +123,9 @@ public class FrontServlet extends HttpServlet {
                     out.println("Methode executee. (pas de ModelAndView retourne)");
                 }
 
+            } catch (IllegalArgumentException e) {
+                response.setStatus(HttpServletResponse.SC_BAD_REQUEST);
+                out.println("Requête invalide : " + e.getMessage());
             } catch (Exception e) {
                 response.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
                 out.println("Erreur : " + e.getMessage());
@@ -136,6 +142,101 @@ public class FrontServlet extends HttpServlet {
         for (VerbUrl k : urlMappingMap.keySet()) {
             out.println("  " + k);
         }
+    }
+
+    private Method findMappedMethod(Class<?> controllerClass, String methodName)
+            throws NoSuchMethodException {
+        for (Method method : controllerClass.getDeclaredMethods()) {
+            if (method.getName().equals(methodName)) {
+                return method;
+            }
+        }
+        throw new NoSuchMethodException(controllerClass.getName() + "." + methodName);
+    }
+
+    private Object[] resolveArguments(Method method, HttpServletRequest request)
+            throws IllegalArgumentException {
+        Parameter[] parameters = method.getParameters();
+        if (parameters.length == 0) {
+            return null;
+        }
+
+        Object[] arguments = new Object[parameters.length];
+        for (int i = 0; i < parameters.length; i++) {
+            Parameter parameter = parameters[i];
+            if (!parameter.isNamePresent()) {
+                throw new IllegalArgumentException("Noms de paramètres indisponibles pour "
+                        + method.getName() + "; compiler avec l'option -parameters.");
+            }
+
+            // Un paramètre qui n'est pas un type simple est construit à partir
+            // des champs du formulaire portant le nom des propriétés de l'objet.
+            if (!isSimpleType(parameter.getType())) {
+                arguments[i] = bindObject(parameter.getType(), request);
+                continue;
+            }
+
+            String value = request.getParameter(parameter.getName());
+            if (value == null) {
+                if (parameter.getType().isPrimitive()) {
+                    throw new IllegalArgumentException("Paramètre obligatoire manquant : "
+                            + parameter.getName());
+                }
+                arguments[i] = null;
+            } else {
+                arguments[i] = convertParameter(value, parameter.getType(), parameter.getName());
+            }
+        }
+        return arguments;
+    }
+
+    private boolean isSimpleType(Class<?> type) {
+        return type.isPrimitive() || type == String.class || type == Integer.class
+                || type == Long.class || type == Double.class || type == Float.class
+                || type == Short.class || type == Byte.class || type == Boolean.class
+                || type == Character.class;
+    }
+
+    private Object bindObject(Class<?> type, HttpServletRequest request)
+            throws IllegalArgumentException {
+        try {
+            Object object = type.getDeclaredConstructor().newInstance();
+            for (Field field : type.getDeclaredFields()) {
+                if (java.lang.reflect.Modifier.isStatic(field.getModifiers())) continue;
+                String value = request.getParameter(field.getName());
+                if (value == null) continue;
+                field.setAccessible(true);
+                field.set(object, convertParameter(value, field.getType(), field.getName()));
+            }
+            return object;
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new IllegalArgumentException("Impossible de construire l'objet " + type.getName(), e);
+        }
+    }
+
+    private Object convertParameter(String value, Class<?> type, String name)
+            throws IllegalArgumentException {
+        try {
+            if (type == String.class) return value;
+            if (type == int.class || type == Integer.class) return Integer.valueOf(value);
+            if (type == long.class || type == Long.class) return Long.valueOf(value);
+            if (type == double.class || type == Double.class) return Double.valueOf(value);
+            if (type == float.class || type == Float.class) return Float.valueOf(value);
+            if (type == short.class || type == Short.class) return Short.valueOf(value);
+            if (type == byte.class || type == Byte.class) return Byte.valueOf(value);
+            if (type == boolean.class || type == Boolean.class) return Boolean.valueOf(value);
+            if (type == char.class || type == Character.class) {
+                if (value.length() == 1) return value.charAt(0);
+                throw new IllegalArgumentException("Le paramètre '" + name
+                        + "' doit contenir un seul caractère.");
+            }
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Valeur invalide pour le paramètre '" + name + "'.", e);
+        }
+        throw new IllegalArgumentException("Type de paramètre non pris en charge pour '"
+                + name + "' : " + type.getName());
     }
 
     @Override
