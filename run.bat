@@ -3,7 +3,7 @@
 set "TOMCAT_HOME=D:\XAMPP\tomcat"
 set "SERVLET_JAR=%TOMCAT_HOME%\lib\servlet-api.jar"
 set "GSON_JAR=framework\lib\gson-2.10.1.jar"
-set "TARGET_DIR=%TOMCAT_HOME%\webapps\sprint6"
+set "TARGET_DIR=%TOMCAT_HOME%\webapps\sprint7"
 set "BIN_DIR=bin"
 
 rem Nettoyage
@@ -16,14 +16,14 @@ mkdir "%BIN_DIR%"
 mkdir test\WEB-INF\classes
 
 rem Compilation Framework & JAR
-javac -d "%BIN_DIR%" -cp "%SERVLET_JAR%;%GSON_JAR%" ^
+javac --release 8 -d "%BIN_DIR%" -cp "%SERVLET_JAR%;%GSON_JAR%" ^
     framework\src\itu\webdynamique\framework\*.java ^
     framework\src\itu\webdynamique\framework\annotation\*.java ^
     framework\src\itu\webdynamique\framework\util\*.java
 jar -cvf framework.jar -C "%BIN_DIR%" .
 
 rem Compilation Application Test
-javac -parameters -d test\WEB-INF\classes -cp "framework.jar;%SERVLET_JAR%;%GSON_JAR%" test\src\itu\webdynamique\app\controller\*.java
+javac --release 8 -parameters -d test\WEB-INF\classes -cp "framework.jar;%SERVLET_JAR%;%GSON_JAR%" test\src\itu\webdynamique\app\controller\*.java
 
 rem Deploiement Tomcat
 mkdir "%TARGET_DIR%\WEB-INF\lib"
@@ -35,4 +35,4 @@ xcopy /e /y test\WEB-INF\views "%TARGET_DIR%\WEB-INF\views\"
 copy framework.jar "%TARGET_DIR%\WEB-INF\lib\"
 copy "%GSON_JAR%" "%TARGET_DIR%\WEB-INF\lib\"
 
-echo Deploiement Sprint 6 termine.
+echo Deploiement Sprint 7 termine.
