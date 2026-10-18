@@ -3,7 +3,7 @@
 set "TOMCAT_HOME=D:\XAMPP\tomcat"
 set "SERVLET_JAR=%TOMCAT_HOME%\lib\servlet-api.jar"
 set "GSON_JAR=framework\lib\gson-2.10.1.jar"
-set "TARGET_DIR=%TOMCAT_HOME%\webapps\sprint7"
+set "TARGET_DIR=%TOMCAT_HOME%\webapps\sprint8"
 set "BIN_DIR=bin"
 
 rem Nettoyage

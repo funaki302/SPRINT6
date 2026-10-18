@@ -17,6 +17,7 @@ import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
+import javax.servlet.http.Part;
 
 public class FrontServlet extends HttpServlet {
 
@@ -169,22 +170,42 @@ public class FrontServlet extends HttpServlet {
                         + method.getName() + "; compiler avec l'option -parameters.");
             }
 
-            // Un paramètre qui n'est pas un type simple est construit à partir
-            // des champs du formulaire portant le nom des propriétés de l'objet.
-            if (!isSimpleType(parameter.getType())) {
-                arguments[i] = bindObject(parameter.getType(), request);
+            String name = parameter.getName();
+            Class<?> type = parameter.getType();
+
+            // Injection directe de l'objet requete HTTP (acces au contexte servlet, etc.)
+            if (type == HttpServletRequest.class) {
+                arguments[i] = request;
                 continue;
             }
 
-            String value = request.getParameter(parameter.getName());
+            // Recuperation d'un fichier envoye via un formulaire multipart/form-data
+            if (type == Part.class) {
+                try {
+                    arguments[i] = request.getPart(name);
+                } catch (IOException | ServletException e) {
+                    throw new IllegalArgumentException(
+                            "Impossible de recuperer le fichier '" + name + "'", e);
+                }
+                continue;
+            }
+
+            // Un parametre qui n'est pas un type simple est construit a partir
+            // des champs du formulaire portant le nom des proprietes de l'objet.
+            if (!isSimpleType(type)) {
+                arguments[i] = bindObject(type, request);
+                continue;
+            }
+
+            String value = request.getParameter(name);
             if (value == null) {
-                if (parameter.getType().isPrimitive()) {
-                    throw new IllegalArgumentException("Paramètre obligatoire manquant : "
-                            + parameter.getName());
+                if (type.isPrimitive()) {
+                    throw new IllegalArgumentException("Parametre obligatoire manquant : "
+                            + name);
                 }
                 arguments[i] = null;
             } else {
-                arguments[i] = convertParameter(value, parameter.getType(), parameter.getName());
+                arguments[i] = convertParameter(value, type, name);
             }
         }
         return arguments;
