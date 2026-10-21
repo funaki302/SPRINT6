@@ -7,14 +7,17 @@ import java.lang.reflect.Parameter;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.Gson;
 import itu.webdynamique.framework.annotation.RestAPI;
+import itu.webdynamique.framework.session.Session;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
+import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
@@ -88,6 +91,31 @@ public class FrontServlet extends HttpServlet {
 
                 // Vérifier si la méthode a l'annotation @RestAPI
                 boolean isRestAPI = laMethode.isAnnotationPresent(RestAPI.class);
+
+                // === Gestion des sessions personnalisées ===
+                // Map<sessionId, Session> partagee dans le ServletContext
+                ServletContext servletContext = getServletContext();
+                @SuppressWarnings("unchecked")
+                ConcurrentHashMap<String, Session> sessionMap =
+                        (ConcurrentHashMap<String, Session>) servletContext.getAttribute("SESSION_MAP");
+                if (sessionMap == null) {
+                    sessionMap = new ConcurrentHashMap<>();
+                    servletContext.setAttribute("SESSION_MAP", sessionMap);
+                }
+
+                // Recuperer ou creer la session HTTP associee a cette requete
+                HttpSession httpSession = request.getSession();
+                String sessionId = httpSession.getId();
+
+                Session userSession = sessionMap.get(sessionId);
+                if (userSession == null) {
+                    userSession = new Session();
+                    sessionMap.put(sessionId, userSession);
+                }
+
+                // Mettre a disposition dans la requete pour injection ou utilisation directe
+                request.setAttribute("__session_id__", sessionId);
+                request.setAttribute("__user_session__", userSession);
 
                 Object[] arguments = resolveArguments(laMethode, request);
                 Object resultat = laMethode.invoke(instance, arguments);
@@ -187,6 +215,12 @@ public class FrontServlet extends HttpServlet {
                     throw new IllegalArgumentException(
                             "Impossible de recuperer le fichier '" + name + "'", e);
                 }
+                continue;
+            }
+
+            // Session utilisateur personnalisee (injectee depuis le contexte servlet)
+            if (type == Session.class) {
+                arguments[i] = request.getAttribute("__user_session__");
                 continue;
             }
 

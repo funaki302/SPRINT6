@@ -3,7 +3,7 @@
 set "TOMCAT_HOME=D:\XAMPP\tomcat"
 set "SERVLET_JAR=%TOMCAT_HOME%\lib\servlet-api.jar"
 set "GSON_JAR=framework\lib\gson-2.10.1.jar"
-set "TARGET_DIR=%TOMCAT_HOME%\webapps\sprint8"
+set "TARGET_DIR=%TOMCAT_HOME%\webapps\sprint9"
 set "BIN_DIR=bin"
 
 rem Nettoyage
@@ -19,7 +19,8 @@ rem Compilation Framework & JAR
 javac --release 8 -d "%BIN_DIR%" -cp "%SERVLET_JAR%;%GSON_JAR%" ^
     framework\src\itu\webdynamique\framework\*.java ^
     framework\src\itu\webdynamique\framework\annotation\*.java ^
-    framework\src\itu\webdynamique\framework\util\*.java
+    framework\src\itu\webdynamique\framework\util\*.java ^
+    framework\src\itu\webdynamique\framework\session\*.java
 jar -cvf framework.jar -C "%BIN_DIR%" .
 
 rem Compilation Application Test
