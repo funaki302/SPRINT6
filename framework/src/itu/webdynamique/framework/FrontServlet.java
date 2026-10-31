@@ -92,6 +92,8 @@ public class FrontServlet extends HttpServlet {
                 // Vérifier si la méthode a l'annotation @RestAPI
                 boolean isRestAPI = laMethode.isAnnotationPresent(RestAPI.class);
 
+
+
                 // === Gestion des sessions personnalisées ===
                 // Map<sessionId, Session> partagee dans le ServletContext
                 ServletContext servletContext = getServletContext();
@@ -116,6 +118,32 @@ public class FrontServlet extends HttpServlet {
                 // Mettre a disposition dans la requete pour injection ou utilisation directe
                 request.setAttribute("__session_id__", sessionId);
                 request.setAttribute("__user_session__", userSession);
+
+                // ===== SPRINT 10 : Authentification obligatoire =====
+                // URLs publiques accessibles sans connexion
+                String[] urlsPubliques = { "/login", "/logout", "/" };
+                boolean estPublique = false;
+                for (String u : urlsPubliques) {
+                    if (requestedUrl.equals(u)) {
+                        estPublique = true;
+                        break;
+                    }
+                }
+
+                Session sessionUtilisateur = (Session) request.getAttribute("__user_session__");
+                boolean estConnecte = (sessionUtilisateur != null && sessionUtilisateur.get("user") != null);
+
+                if (!estPublique && !estConnecte) {
+                    if (isRestAPI) {
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json;charset=UTF-8");
+                        out.print("{\"erreur\":\"Authentification requise\"}");
+                        return;
+                    }
+                    response.sendRedirect(contextPath + "/login");
+                    return;
+                }
+
 
                 Object[] arguments = resolveArguments(laMethode, request);
                 Object resultat = laMethode.invoke(instance, arguments);
