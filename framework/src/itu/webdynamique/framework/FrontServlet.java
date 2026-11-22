@@ -27,7 +27,9 @@ public class FrontServlet extends HttpServlet {
 
     private Map<VerbUrl, Mapping> urlMappingMap;
 
-    
+    // Sprint 11 - Singleton : nom de classe du controller -> son instance unique
+    private Map<String, Object> controllerInstances;
+
     private String prefixe;
     private String suffixe;
 
@@ -35,7 +37,9 @@ public class FrontServlet extends HttpServlet {
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
 
-       
+        // Sprint 11 : Map des controllers deja instancies (thread-safe car le servlet est partage)
+        this.controllerInstances = new ConcurrentHashMap<>();
+
         ServletContext servletContext = config.getServletContext();
         Object attribute = servletContext.getAttribute(
             FrameworkContextListener.MAPPING_MAP_ATTRIBUTE
@@ -57,6 +61,24 @@ public class FrontServlet extends HttpServlet {
 
         System.out.println("[Framework] prefixe = " + prefixe);
         System.out.println("[Framework] suffixe = " + suffixe);
+    }
+
+    /**
+     * Sprint 11 - Singleton :
+     * si le controller existe deja dans la Map, on recupere son instance ;
+     * sinon on l'instancie et on l'insere dans la Map (nom de classe -> instance).
+     */
+    private Object getControllerInstance(Class<?> laClasse) throws Exception {
+        String className = laClasse.getName();
+        Object instance = controllerInstances.get(className);
+        if (instance == null) {
+            Object nouvelle = laClasse.getDeclaredConstructor().newInstance();
+            // putIfAbsent : si deux requetes arrivent en meme temps, une seule instance est conservee
+            Object existante = controllerInstances.putIfAbsent(className, nouvelle);
+            instance = (existante != null) ? existante : nouvelle;
+            System.out.println("[Framework] Nouvelle instance du controller : " + className);
+        }
+        return instance;
     }
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
@@ -87,7 +109,7 @@ public class FrontServlet extends HttpServlet {
 
             try {
                 Class<?> laClasse  = Class.forName(mapping.getClassName());
-                Object   instance  = laClasse.getDeclaredConstructor().newInstance();
+                Object   instance  = getControllerInstance(laClasse);
                 Method   laMethode = findMappedMethod(laClasse, mapping.getMethodName());
 
                 // Vérifier si la méthode a l'annotation @RestAPI
