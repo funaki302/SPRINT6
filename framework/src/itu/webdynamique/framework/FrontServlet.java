@@ -7,15 +7,19 @@ import java.lang.reflect.Parameter;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.Gson;
 import itu.webdynamique.framework.annotation.RestAPI;
+import itu.webdynamique.framework.annotation.RolesAllowed;
+import itu.webdynamique.framework.session.Session;
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
@@ -23,7 +27,9 @@ public class FrontServlet extends HttpServlet {
 
     private Map<VerbUrl, Mapping> urlMappingMap;
 
-    
+    // Sprint 11 - Singleton : nom de classe du controller -> son instance unique
+    private Map<String, Object> controllerInstances;
+
     private String prefixe;
     private String suffixe;
 
@@ -31,7 +37,9 @@ public class FrontServlet extends HttpServlet {
     public void init(ServletConfig config) throws ServletException {
         super.init(config);
 
-       
+        // Sprint 11 : Map des controllers deja instancies (thread-safe car le servlet est partage)
+        this.controllerInstances = new ConcurrentHashMap<>();
+
         ServletContext servletContext = config.getServletContext();
         Object attribute = servletContext.getAttribute(
             FrameworkContextListener.MAPPING_MAP_ATTRIBUTE
@@ -53,6 +61,24 @@ public class FrontServlet extends HttpServlet {
 
         System.out.println("[Framework] prefixe = " + prefixe);
         System.out.println("[Framework] suffixe = " + suffixe);
+    }
+
+    /**
+     * Sprint 11 - Singleton :
+     * si le controller existe deja dans la Map, on recupere son instance ;
+     * sinon on l'instancie et on l'insere dans la Map (nom de classe -> instance).
+     */
+    private Object getControllerInstance(Class<?> laClasse) throws Exception {
+        String className = laClasse.getName();
+        Object instance = controllerInstances.get(className);
+        if (instance == null) {
+            Object nouvelle = laClasse.getDeclaredConstructor().newInstance();
+            // putIfAbsent : si deux requetes arrivent en meme temps, une seule instance est conservee
+            Object existante = controllerInstances.putIfAbsent(className, nouvelle);
+            instance = (existante != null) ? existante : nouvelle;
+            System.out.println("[Framework] Nouvelle instance du controller : " + className);
+        }
+        return instance;
     }
 
     protected void processRequest(HttpServletRequest request, HttpServletResponse response)
@@ -83,11 +109,98 @@ public class FrontServlet extends HttpServlet {
 
             try {
                 Class<?> laClasse  = Class.forName(mapping.getClassName());
-                Object   instance  = laClasse.getDeclaredConstructor().newInstance();
+                Object   instance  = getControllerInstance(laClasse);
                 Method   laMethode = findMappedMethod(laClasse, mapping.getMethodName());
 
                 // Vérifier si la méthode a l'annotation @RestAPI
                 boolean isRestAPI = laMethode.isAnnotationPresent(RestAPI.class);
+
+
+
+                // === Gestion des sessions personnalisées ===
+                // Map<sessionId, Session> partagee dans le ServletContext
+                ServletContext servletContext = getServletContext();
+                @SuppressWarnings("unchecked")
+                ConcurrentHashMap<String, Session> sessionMap =
+                        (ConcurrentHashMap<String, Session>) servletContext.getAttribute("SESSION_MAP");
+                if (sessionMap == null) {
+                    sessionMap = new ConcurrentHashMap<>();
+                    servletContext.setAttribute("SESSION_MAP", sessionMap);
+                }
+
+                // Recuperer ou creer la session HTTP associee a cette requete
+                HttpSession httpSession = request.getSession();
+                String sessionId = httpSession.getId();
+
+                Session userSession = sessionMap.get(sessionId);
+                if (userSession == null) {
+                    userSession = new Session();
+                    sessionMap.put(sessionId, userSession);
+                }
+
+                // Mettre a disposition dans la requete pour injection ou utilisation directe
+                request.setAttribute("__session_id__", sessionId);
+                request.setAttribute("__user_session__", userSession);
+
+                // ===== SPRINT 10 : Authentification obligatoire =====
+                // URLs publiques accessibles sans connexion
+                String[] urlsPubliques = { "/login", "/logout", "/" };
+                boolean estPublique = false;
+                for (String u : urlsPubliques) {
+                    if (requestedUrl.equals(u)) {
+                        estPublique = true;
+                        break;
+                    }
+                }
+
+                Session sessionUtilisateur = (Session) request.getAttribute("__user_session__");
+                boolean estConnecte = (sessionUtilisateur != null && sessionUtilisateur.get("user") != null);
+
+                if (!estPublique && !estConnecte) {
+                    if (isRestAPI) {
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("application/json;charset=UTF-8");
+                        out.print("{\"erreur\":\"Authentification requise\"}");
+                        return;
+                    }
+                    response.sendRedirect(contextPath + "/login");
+                    return;
+                }
+
+
+
+                // ===== Vérification des roles (SPRINT 11) =====
+                RolesAllowed rolesAllowed = laMethode.getAnnotation(RolesAllowed.class);
+                if (rolesAllowed != null) {
+                    String roleUtilisateur = (String) sessionUtilisateur.get("role");
+                    boolean aLeRole = false;
+                    if (roleUtilisateur != null) {
+                        for (String r : rolesAllowed.value()) {
+                            if (r.equals(roleUtilisateur)) {
+                                aLeRole = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!aLeRole) {
+                        if (isRestAPI) {
+                            response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                            response.setContentType("application/json;charset=UTF-8");
+                            out.print("{\"erreur\":\"Acces interdit : role insuffisant\"}");
+                            return;
+                        }
+                        request.setAttribute("erreur", "Acces interdit : vous n'avez pas le role requis pour acceder a cette page.");
+                        ModelAndView mvErreur = new ModelAndView();
+                        mvErreur.setUrl("erreur");
+                        mvErreur.setAttribute("titre", "Accès interdit");
+                        for (Map.Entry<String, Object> entry : mvErreur.getData().entrySet()) {
+                            request.setAttribute(entry.getKey(), entry.getValue());
+                        }
+                        RequestDispatcher dispatcher = getServletContext().getRequestDispatcher("/WEB-INF/views/erreur.jsp");
+                        dispatcher.forward(request, response);
+                        return;
+                    }
+                }
 
                 Object[] arguments = resolveArguments(laMethode, request);
                 Object resultat = laMethode.invoke(instance, arguments);
