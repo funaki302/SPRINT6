@@ -7,20 +7,19 @@ import java.lang.reflect.Parameter;
 import java.lang.reflect.Field;
 import java.util.Map;
 import java.util.HashMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 import com.google.gson.Gson;
 import itu.webdynamique.framework.annotation.RestAPI;
-<<<<<<< Updated upstream
-=======
 import itu.webdynamique.framework.annotation.RolesAllowed;
 import itu.webdynamique.framework.session.Session;
->>>>>>> Stashed changes
 import javax.servlet.RequestDispatcher;
 import javax.servlet.ServletConfig;
 import javax.servlet.ServletContext;
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpSession;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.Part;
 
@@ -94,8 +93,6 @@ public class FrontServlet extends HttpServlet {
                 // Vérifier si la méthode a l'annotation @RestAPI
                 boolean isRestAPI = laMethode.isAnnotationPresent(RestAPI.class);
 
-<<<<<<< Updated upstream
-=======
 
 
                 // === Gestion des sessions personnalisées ===
@@ -183,7 +180,6 @@ public class FrontServlet extends HttpServlet {
                     }
                 }
 
->>>>>>> Stashed changes
                 Object[] arguments = resolveArguments(laMethode, request);
                 Object resultat = laMethode.invoke(instance, arguments);
 
